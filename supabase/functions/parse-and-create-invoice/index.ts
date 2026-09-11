@@ -63,6 +63,8 @@ const geminiResponse = await fetch(geminiUrl, {
 Respondé ÚNICAMENTE con un objeto JSON válido, sin bloques de código markdown, con esta estructura exacta:
 {"cliente": "string", "concepto": "string", "monto": number, "moneda": "string", "dias_vencimiento": number}
 
+Regla estricta para moneda: Debe ser SIEMPRE un código ISO 4217 de 3 letras en mayúsculas (ej: USD, ARS, EUR, MXN, CLP, COP). NUNCA uses la palabra completa (como 'dólares', 'pesos', 'euros').
+
 Si no identificás cliente o monto, respondé: {"error": true}
 
 Texto a procesar: "${prompt}"`
