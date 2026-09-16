@@ -50,16 +50,16 @@ serve(async (req) => {
       )
     }
 
-   // Endpoint utilizando el modelo recomendado gemini-3.6-flash
-const geminiUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-3.6-flash:generateContent?key=${geminiApiKey}`
+    // Endpoint utilizando el modelo recomendado gemini-3.6-flash
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-3.6-flash:generateContent?key=${geminiApiKey}`
 
-const geminiResponse = await fetch(geminiUrl, {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    contents: [{
-      parts: [{
-        text: `Extraé datos de facturación del texto enviado.
+    const geminiResponse = await fetch(geminiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          parts: [{
+            text: `Extraé datos de facturación del texto enviado.
 Respondé ÚNICAMENTE con un objeto JSON válido, sin bloques de código markdown, con esta estructura exacta:
 {"cliente": "string", "concepto": "string", "monto": number, "moneda": "string", "dias_vencimiento": number}
 
@@ -68,10 +68,10 @@ Regla estricta para moneda: Debe ser SIEMPRE un código ISO 4217 de 3 letras en 
 Si no identificás cliente o monto, respondé: {"error": true}
 
 Texto a procesar: "${prompt}"`
-      }]
-    }]
-  })
-})
+          }]
+        }]
+      })
+    })
 
     const geminiData = await geminiResponse.json()
 
@@ -119,9 +119,25 @@ Texto a procesar: "${prompt}"`
       )
     }
 
-    const numeroFactura = `F-${Math.floor(Date.now() / 1000)}`
+    // Validación de moneda a formato ISO de 3 letras (USD por defecto si no es válido)
+    let monedaIso = (parsedInvoice.moneda || 'USD').trim().toUpperCase()
+    if (monedaIso.length !== 3) {
+      monedaIso = 'USD'
+    }
 
-    // Inserción en la base de datos
+    // 1. Obtener el número correlativo llamando a la función RPC de Supabase
+    const { data: numeroFactura, error: rpcError } = await supabaseClient
+      .rpc('generar_numero_factura', { p_usuario_id: user.id })
+
+    if (rpcError || !numeroFactura) {
+      console.error('Error al generar número secuencial:', rpcError)
+      return new Response(
+        JSON.stringify({ error: 'No se pudo generar la numeración de la factura' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // 2. Inserción usando el número secuencial generado (ej: F-0001)
     const { data: insertedInvoice, error: dbError } = await supabaseClient
       .from('facturas')
       .insert({
@@ -130,7 +146,7 @@ Texto a procesar: "${prompt}"`
         cliente: parsedInvoice.cliente,
         concepto: parsedInvoice.concepto || 'Servicios profesionales',
         monto: parsedInvoice.monto,
-        moneda: (parsedInvoice.moneda || 'USD').toUpperCase(),
+        moneda: monedaIso,
         dias_vencimiento: parsedInvoice.dias_vencimiento || 15,
         estado: 'pendiente',
       })
@@ -150,7 +166,7 @@ Texto a procesar: "${prompt}"`
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
 
-  } catch (err) {
+  } catch (err: any) {
     console.error('Error general:', err)
     return new Response(
       JSON.stringify({ error: `Error interno: ${err.message || 'Desconocido'}` }),
