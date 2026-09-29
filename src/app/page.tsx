@@ -22,6 +22,7 @@ export default function Home() {
   const [prompt, setPrompt] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
   const [sendingEmailId, setSendingEmailId] = useState<string | null>(null)
+  const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null)
   const [invoices, setInvoices] = useState<Factura[]>([])
   const [errorMsg, setErrorMsg] = useState('')
 
@@ -134,7 +135,6 @@ export default function Home() {
     }
   }
 
-  // --- LLAMADA A LA EDGE FUNCTION PARA ENVIAR EMAIL REAL ---
   const handleSendEmail = async (facturaId: string) => {
     const emailDestino = user?.email
 
@@ -159,6 +159,28 @@ export default function Home() {
       alert(`Error de conexión: ${err.message}`)
     } finally {
       setSendingEmailId(null)
+    }
+  }
+
+  // --- CAMBIAR ESTADO DE LA FACTURA A 'PAGADA' ---
+  const handleMarkAsPaid = async (facturaId: string) => {
+    setUpdatingStatusId(facturaId)
+
+    try {
+      const { error } = await supabase
+        .from('facturas')
+        .update({ estado: 'pagada' })
+        .eq('id', facturaId)
+
+      if (error) {
+        alert(`Error al actualizar estado: ${error.message}`)
+      } else {
+        await fetchInvoices() // Recargar la lista para reflejar el nuevo estado
+      }
+    } catch (err: any) {
+      alert(`Error inesperado: ${err.message}`)
+    } finally {
+      setUpdatingStatusId(null)
     }
   }
 
@@ -233,59 +255,80 @@ export default function Home() {
               </div>
             ) : (
               <div className="grid gap-4">
-                {invoices.map((inv) => (
-                  <div 
-                    key={inv.id} 
-                    className="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-md flex flex-col gap-4 hover:border-slate-600 transition"
-                  >
-                    <div className="flex justify-between items-center border-b border-slate-700 pb-2">
-                      <span className="font-bold text-emerald-400">{inv.numero}</span>
-                      <span className="text-xs px-2.5 py-1 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-full font-semibold uppercase tracking-wider">
-                        {inv.estado}
-                      </span>
+                {invoices.map((inv) => {
+                  const isPagada = inv.estado?.toLowerCase() === 'pagada'
+
+                  return (
+                    <div 
+                      key={inv.id} 
+                      className="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-md flex flex-col gap-4 hover:border-slate-600 transition"
+                    >
+                      <div className="flex justify-between items-center border-b border-slate-700 pb-2">
+                        <span className="font-bold text-emerald-400">{inv.numero}</span>
+                        <span className={`text-xs px-2.5 py-1 rounded-full font-semibold uppercase tracking-wider border ${
+                          isPagada 
+                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
+                            : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                        }`}>
+                          {inv.estado}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div>
+                          <span className="text-slate-400 block text-xs">Cliente</span>
+                          <span className="font-medium text-slate-200">{inv.cliente}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block text-xs">Concepto</span>
+                          <span className="font-medium text-slate-200">{inv.concepto}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block text-xs">Vencimiento</span>
+                          <span className="font-medium text-slate-200">{inv.dias_vencimiento} días</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block text-xs">Total</span>
+                          <span className="font-bold text-emerald-400">{inv.moneda} {inv.monto}</span>
+                        </div>
+                      </div>
+
+                      {/* BOTONES DE ACCIÓN */}
+                      <div className="flex flex-col gap-2">
+                        <div className="flex gap-2">
+                          <a
+                            href={getWhatsAppUrl(inv)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center justify-center gap-2 w-full py-2 px-3 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 font-medium text-xs rounded-lg transition"
+                          >
+                            WhatsApp
+                          </a>
+
+                          <button
+                            onClick={() => handleSendEmail(inv.id)}
+                            disabled={sendingEmailId === inv.id}
+                            className="inline-flex items-center justify-center gap-2 w-full py-2 px-3 bg-sky-600/20 hover:bg-sky-600/30 text-sky-400 border border-sky-500/30 font-medium text-xs rounded-lg transition disabled:opacity-50"
+                          >
+                            {sendingEmailId === inv.id ? 'Enviando...' : 'Enviar por Email'}
+                          </button>
+                        </div>
+
+                        {/* BOTÓN MARCAR COMO PAGADA (Sustituye cuando se paga) */}
+                        {!isPagada && (
+                          <button
+                            onClick={() => handleMarkAsPaid(inv.id)}
+                            disabled={updatingStatusId === inv.id}
+                            className="w-full py-2 px-3 bg-slate-700/60 hover:bg-slate-700 text-slate-200 border border-slate-600 font-medium text-xs rounded-lg transition disabled:opacity-50"
+                          >
+                            {updatingStatusId === inv.id ? 'Actualizando...' : 'Marcar como pagada'}
+                          </button>
+                        )}
+                      </div>
+
                     </div>
-
-                    <div className="grid grid-cols-2 gap-2 text-sm">
-                      <div>
-                        <span className="text-slate-400 block text-xs">Cliente</span>
-                        <span className="font-medium text-slate-200">{inv.cliente}</span>
-                      </div>
-                      <div>
-                        <span className="text-slate-400 block text-xs">Concepto</span>
-                        <span className="font-medium text-slate-200">{inv.concepto}</span>
-                      </div>
-                      <div>
-                        <span className="text-slate-400 block text-xs">Vencimiento</span>
-                        <span className="font-medium text-slate-200">{inv.dias_vencimiento} días</span>
-                      </div>
-                      <div>
-                        <span className="text-slate-400 block text-xs">Total</span>
-                        <span className="font-bold text-emerald-400">{inv.moneda} {inv.monto}</span>
-                      </div>
-                    </div>
-
-                    {/* BOTONES DE ACCIÓN: WHATSAPP Y EMAIL DESDE BACKEND */}
-                    <div className="flex gap-2">
-                      <a
-                        href={getWhatsAppUrl(inv)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center justify-center gap-2 w-full py-2 px-3 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 font-medium text-xs rounded-lg transition"
-                      >
-                        WhatsApp
-                      </a>
-
-                      <button
-                        onClick={() => handleSendEmail(inv.id)}
-                        disabled={sendingEmailId === inv.id}
-                        className="inline-flex items-center justify-center gap-2 w-full py-2 px-3 bg-sky-600/20 hover:bg-sky-600/30 text-sky-400 border border-sky-500/30 font-medium text-xs rounded-lg transition disabled:opacity-50"
-                      >
-                        {sendingEmailId === inv.id ? 'Enviando...' : 'Enviar por Email'}
-                      </button>
-                    </div>
-
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>
