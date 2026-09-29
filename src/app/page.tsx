@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { User } from '@supabase/supabase-js'
 
-// Definición de la interfaz del tipo Factura
 interface Factura {
   id: string
   numero: string
@@ -18,21 +17,19 @@ interface Factura {
 }
 
 export default function Home() {
-  // --- ESTADOS DE LA APLICACIÓN ---
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [prompt, setPrompt] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
-  const [invoices, setInvoices] = useState<Factura[]>([]) // Arreglo para guardar el historial completo
+  const [sendingEmailId, setSendingEmailId] = useState<string | null>(null)
+  const [invoices, setInvoices] = useState<Factura[]>([])
   const [errorMsg, setErrorMsg] = useState('')
 
-  // --- HELPER: GENERAR LINK DE WHATSAPP CON DATOS REALES DE LA BD ---
   const getWhatsAppUrl = (inv: Factura) => {
     const mensaje = `Hola ${inv.cliente}, te envío la factura *${inv.numero}* por un total de *${inv.moneda} ${inv.monto}* en concepto de: "${inv.concepto}". Vence en ${inv.dias_vencimiento} días.`
     return `https://wa.me/?text=${encodeURIComponent(mensaje)}`
   }
 
-  // --- OBTENER FACTURAS DE SUPABASE (SELECT) ---
   const fetchInvoices = async () => {
     try {
       const { data, error } = await supabase
@@ -50,7 +47,6 @@ export default function Home() {
     }
   }
 
-  // --- ESCUCHA DE SESIÓN DE AUTENTICACIÓN ---
   useEffect(() => {
     async function getUser() {
       const { data: { session } } = await supabase.auth.getSession()
@@ -59,7 +55,7 @@ export default function Home() {
       setLoading(false)
 
       if (currentUser) {
-        fetchInvoices() // Carga inicial de facturas al detectar sesión
+        fetchInvoices()
       }
     }
 
@@ -73,7 +69,7 @@ export default function Home() {
       if (currentUser) {
         fetchInvoices()
       } else {
-        setInvoices([]) // Limpia el historial al cerrar sesión
+        setInvoices([])
       }
     })
 
@@ -82,7 +78,6 @@ export default function Home() {
     }
   }, [])
 
-  // --- ACCIONES DE AUTENTICACIÓN ---
   const handleGoogleLogin = async () => {
     await supabase.auth.signInWithOAuth({
       provider: 'google',
@@ -97,7 +92,6 @@ export default function Home() {
     setInvoices([])
   }
 
-  // --- LLAMADA A LA EDGE FUNCTION ---
   const handleCreateInvoice = async () => {
     if (!prompt.trim()) return
 
@@ -130,7 +124,6 @@ export default function Home() {
         return
       }
 
-      // Limpia el input y recarga la lista de facturas desde la BD
       setPrompt('')
       await fetchInvoices()
 
@@ -141,7 +134,34 @@ export default function Home() {
     }
   }
 
-  // --- PANTALLA DE CARGA ---
+  // --- LLAMADA A LA EDGE FUNCTION PARA ENVIAR EMAIL REAL ---
+  const handleSendEmail = async (facturaId: string) => {
+    const emailDestino = user?.email
+
+    if (!emailDestino) {
+      alert('No se detectó la dirección de correo del usuario.')
+      return
+    }
+
+    setSendingEmailId(facturaId)
+
+    try {
+      const { data, error } = await supabase.functions.invoke('send-invoice-email', {
+        body: { facturaId, emailDestino },
+      })
+
+      if (error || data?.error) {
+        alert(`Error al enviar el email: ${error?.message || data?.error}`)
+      } else {
+        alert(`¡Factura enviada con éxito por correo a ${emailDestino}!`)
+      }
+    } catch (err: any) {
+      alert(`Error de conexión: ${err.message}`)
+    } finally {
+      setSendingEmailId(null)
+    }
+  }
+
   if (loading) {
     return (
       <main className="flex min-h-screen items-center justify-center p-6 bg-slate-900 text-white">
@@ -150,7 +170,6 @@ export default function Home() {
     )
   }
 
-  // --- VISTA PRINCIPAL ---
   return (
     <main className="flex min-h-screen flex-col items-center p-6 bg-slate-900 text-slate-100 gap-6">
       <h1 className="text-3xl font-bold tracking-tight mt-6">FacturaFácil AI</h1>
@@ -168,7 +187,6 @@ export default function Home() {
       ) : (
         <div className="flex flex-col gap-6 max-w-2xl w-full pb-12">
           
-          {/* BARRA SUPERIOR DE USUARIO */}
           <div className="flex justify-between items-center bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-sm">
             <span className="text-sm text-slate-300">
               Conectado como: <strong className="text-white">{user.email}</strong>
@@ -181,7 +199,6 @@ export default function Home() {
             </button>
           </div>
 
-          {/* FORMULARIO DE GENERACIÓN CON IA */}
           <div className="bg-slate-800 p-6 rounded-xl border border-slate-700 flex flex-col gap-4 shadow-md">
             <label className="text-sm font-semibold text-slate-200">
               ¿Qué querés cobrar?
@@ -207,7 +224,6 @@ export default function Home() {
             )}
           </div>
 
-          {/* HISTORIAL DE FACTURAS (SELECT FROM SUPABASE) */}
           <div className="flex flex-col gap-4">
             <h2 className="text-xl font-bold text-slate-200">Mis Facturas Guardadas ({invoices.length})</h2>
 
@@ -248,18 +264,25 @@ export default function Home() {
                       </div>
                     </div>
 
-                    {/* BOTÓN ENVIAR POR WHATSAPP CON DATOS REALES DE BD */}
-                    <a
-                      href={getWhatsAppUrl(inv)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center justify-center gap-2 w-full py-2 px-4 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 font-medium text-sm rounded-lg transition"
-                    >
-                      <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
-                        <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.842-1.001z"/>
-                      </svg>
-                      Enviar por WhatsApp
-                    </a>
+                    {/* BOTONES DE ACCIÓN: WHATSAPP Y EMAIL DESDE BACKEND */}
+                    <div className="flex gap-2">
+                      <a
+                        href={getWhatsAppUrl(inv)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center justify-center gap-2 w-full py-2 px-3 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 font-medium text-xs rounded-lg transition"
+                      >
+                        WhatsApp
+                      </a>
+
+                      <button
+                        onClick={() => handleSendEmail(inv.id)}
+                        disabled={sendingEmailId === inv.id}
+                        className="inline-flex items-center justify-center gap-2 w-full py-2 px-3 bg-sky-600/20 hover:bg-sky-600/30 text-sky-400 border border-sky-500/30 font-medium text-xs rounded-lg transition disabled:opacity-50"
+                      >
+                        {sendingEmailId === inv.id ? 'Enviando...' : 'Enviar por Email'}
+                      </button>
+                    </div>
 
                   </div>
                 ))}
