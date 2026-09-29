@@ -26,8 +26,14 @@ export default function Home() {
   const [invoices, setInvoices] = useState<Factura[]>([]) // Arreglo para guardar el historial completo
   const [errorMsg, setErrorMsg] = useState('')
 
+  // --- HELPER: GENERAR LINK DE WHATSAPP CON DATOS REALES DE LA BD ---
+  const getWhatsAppUrl = (inv: Factura) => {
+    const mensaje = `Hola ${inv.cliente}, te envío la factura *${inv.numero}* por un total de *${inv.moneda} ${inv.monto}* en concepto de: "${inv.concepto}". Vence en ${inv.dias_vencimiento} días.`
+    return `https://wa.me/?text=${encodeURIComponent(mensaje)}`
+  }
+
   // --- OBTENER FACTURAS DE SUPABASE (SELECT) ---
-const fetchInvoices = async () => {
+  const fetchInvoices = async () => {
     try {
       const { data, error } = await supabase
         .from('facturas')
@@ -214,7 +220,7 @@ const fetchInvoices = async () => {
                 {invoices.map((inv) => (
                   <div 
                     key={inv.id} 
-                    className="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-md flex flex-col gap-3 hover:border-slate-600 transition"
+                    className="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-md flex flex-col gap-4 hover:border-slate-600 transition"
                   >
                     <div className="flex justify-between items-center border-b border-slate-700 pb-2">
                       <span className="font-bold text-emerald-400">{inv.numero}</span>
@@ -241,6 +247,20 @@ const fetchInvoices = async () => {
                         <span className="font-bold text-emerald-400">{inv.moneda} {inv.monto}</span>
                       </div>
                     </div>
+
+                    {/* BOTÓN ENVIAR POR WHATSAPP CON DATOS REALES DE BD */}
+                    <a
+                      href={getWhatsAppUrl(inv)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center justify-center gap-2 w-full py-2 px-4 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 font-medium text-sm rounded-lg transition"
+                    >
+                      <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                        <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.842-1.001z"/>
+                      </svg>
+                      Enviar por WhatsApp
+                    </a>
+
                   </div>
                 ))}
               </div>
