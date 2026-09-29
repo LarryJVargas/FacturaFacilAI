@@ -31,6 +31,65 @@ export default function Home() {
     return `https://wa.me/?text=${encodeURIComponent(mensaje)}`
   }
 
+  // --- PROGRAMAR RECORDATORIOS (~35%, ~70%, 100%) ---
+  const programarRecordatorios = async (factura: Factura, userId: string) => {
+    try {
+      const { data: existentes } = await supabase
+        .from('recordatorios')
+        .select('id')
+        .eq('factura_id', factura.id)
+
+      if (existentes && existentes.length > 0) {
+        return
+      }
+
+      const fechaEmision = new Date(factura.created_at || Date.now())
+      const diasTotales = factura.dias_vencimiento || 15
+
+      const diasSuave = Math.max(1, Math.round(diasTotales * 0.35))
+      const diasDirecto = Math.max(2, Math.round(diasTotales * 0.70))
+      const diasVencimiento = diasTotales
+
+      const fechaSuave = new Date(fechaEmision.getTime() + diasSuave * 24 * 60 * 60 * 1000)
+      const fechaDirecto = new Date(fechaEmision.getTime() + diasDirecto * 24 * 60 * 60 * 1000)
+      const fechaVencimiento = new Date(fechaEmision.getTime() + diasVencimiento * 24 * 60 * 60 * 1000)
+
+      const nuevosRecordatorios = [
+        {
+          factura_id: factura.id,
+          usuario_id: userId,
+          tipo: 'suave',
+          fecha_programada: fechaSuave.toISOString(),
+          enviado: false,
+        },
+        {
+          factura_id: factura.id,
+          usuario_id: userId,
+          tipo: 'directo',
+          fecha_programada: fechaDirecto.toISOString(),
+          enviado: false,
+        },
+        {
+          factura_id: factura.id,
+          usuario_id: userId,
+          tipo: 'vencimiento',
+          fecha_programada: fechaVencimiento.toISOString(),
+          enviado: false,
+        },
+      ]
+
+      const { error } = await supabase.from('recordatorios').insert(nuevosRecordatorios)
+
+      if (error) {
+        console.error('Error al programar recordatorios:', error.message)
+      } else {
+        console.log('Recordatorios programados para la factura', factura.numero)
+      }
+    } catch (err) {
+      console.error('Error inesperado al programar recordatorios:', err)
+    }
+  }
+
   const fetchInvoices = async () => {
     try {
       const { data, error } = await supabase
@@ -135,7 +194,7 @@ export default function Home() {
     }
   }
 
-  const handleSendEmail = async (facturaId: string) => {
+  const handleSendEmail = async (inv: Factura) => {
     const emailDestino = user?.email
 
     if (!emailDestino) {
@@ -143,17 +202,20 @@ export default function Home() {
       return
     }
 
-    setSendingEmailId(facturaId)
+    setSendingEmailId(inv.id)
 
     try {
       const { data, error } = await supabase.functions.invoke('send-invoice-email', {
-        body: { facturaId, emailDestino },
+        body: { facturaId: inv.id, emailDestino },
       })
 
       if (error || data?.error) {
         alert(`Error al enviar el email: ${error?.message || data?.error}`)
       } else {
-        alert(`¡Factura enviada con éxito por correo a ${emailDestino}!`)
+        if (user) {
+          await programarRecordatorios(inv, user.id)
+        }
+        alert(`¡Factura enviada por correo a ${emailDestino} y recordatorios programados!`)
       }
     } catch (err: any) {
       alert(`Error de conexión: ${err.message}`)
@@ -162,7 +224,12 @@ export default function Home() {
     }
   }
 
-  // --- CAMBIAR ESTADO DE LA FACTURA A 'PAGADA' ---
+  const handleWhatsAppClick = async (inv: Factura) => {
+    if (user) {
+      await programarRecordatorios(inv, user.id)
+    }
+  }
+
   const handleMarkAsPaid = async (facturaId: string) => {
     setUpdatingStatusId(facturaId)
 
@@ -175,7 +242,7 @@ export default function Home() {
       if (error) {
         alert(`Error al actualizar estado: ${error.message}`)
       } else {
-        await fetchInvoices() // Recargar la lista para reflejar el nuevo estado
+        await fetchInvoices()
       }
     } catch (err: any) {
       alert(`Error inesperado: ${err.message}`)
@@ -293,20 +360,20 @@ export default function Home() {
                         </div>
                       </div>
 
-                      {/* BOTONES DE ACCIÓN */}
                       <div className="flex flex-col gap-2">
                         <div className="flex gap-2">
                           <a
                             href={getWhatsAppUrl(inv)}
                             target="_blank"
                             rel="noopener noreferrer"
+                            onClick={() => handleWhatsAppClick(inv)}
                             className="inline-flex items-center justify-center gap-2 w-full py-2 px-3 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 font-medium text-xs rounded-lg transition"
                           >
                             WhatsApp
                           </a>
 
                           <button
-                            onClick={() => handleSendEmail(inv.id)}
+                            onClick={() => handleSendEmail(inv)}
                             disabled={sendingEmailId === inv.id}
                             className="inline-flex items-center justify-center gap-2 w-full py-2 px-3 bg-sky-600/20 hover:bg-sky-600/30 text-sky-400 border border-sky-500/30 font-medium text-xs rounded-lg transition disabled:opacity-50"
                           >
@@ -314,7 +381,6 @@ export default function Home() {
                           </button>
                         </div>
 
-                        {/* BOTÓN MARCAR COMO PAGADA (Sustituye cuando se paga) */}
                         {!isPagada && (
                           <button
                             onClick={() => handleMarkAsPaid(inv.id)}
