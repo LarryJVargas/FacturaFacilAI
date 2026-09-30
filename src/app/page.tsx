@@ -25,6 +25,32 @@ export default function Home() {
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null)
   const [invoices, setInvoices] = useState<Factura[]>([])
   const [errorMsg, setErrorMsg] = useState('')
+  // Estado para almacenar el total de facturas del mes
+  const [monthlyCount, setMonthlyCount] = useState<number>(0)
+
+  // Función para obtener el número de facturas creadas en el mes actual
+  const fetchMonthlyInvoiceCount = async (userId: string) => {
+    try {
+      // 1. Obtener la fecha de inicio del mes actual (ej: 2026-09-01T00:00:00.000Z)
+      const now = new Date()
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+
+      // 2. Realizar la consulta con count: 'exact' e head: true (solo trae la cantidad, sin descargar los datos)
+      const { count, error } = await supabase
+        .from('facturas')
+        .select('id', { count: 'exact'})
+        .eq('usuario_id', userId)
+        .gte('fecha_creacion', startOfMonth)
+
+      if (error) {
+        console.error('Error al contar las facturas del mes:', error.message || error)
+      } else {
+        setMonthlyCount(count || 0)
+      }
+    } catch (err) {
+      console.error('Error inesperado al contar facturas del mes:', err)
+    }
+  }
 
   const getWhatsAppUrl = (inv: Factura) => {
     const mensaje = `Hola ${inv.cliente}, te envío la factura *${inv.numero}* por un total de *${inv.moneda} ${inv.monto}* en concepto de: "${inv.concepto}". Vence en ${inv.dias_vencimiento} días.`
@@ -116,6 +142,7 @@ export default function Home() {
 
       if (currentUser) {
         fetchInvoices()
+        fetchMonthlyInvoiceCount(currentUser.id) // <-- Conteo mensual inicial
       }
     }
 
@@ -128,8 +155,10 @@ export default function Home() {
 
       if (currentUser) {
         fetchInvoices()
+        fetchMonthlyInvoiceCount(currentUser.id) // <-- Conteo mensual en login
       } else {
         setInvoices([])
+        setMonthlyCount(0)
       }
     })
 
@@ -186,6 +215,9 @@ export default function Home() {
 
       setPrompt('')
       await fetchInvoices()
+      if (user) {
+      await fetchMonthlyInvoiceCount(user.id) // <-- Actualiza el contador mensual
+      }
 
     } catch (err: any) {
       setErrorMsg(`Error inesperado: ${err.message || 'Error de conexión'}`)
@@ -279,6 +311,9 @@ export default function Home() {
           <div className="flex justify-between items-center bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-sm">
             <span className="text-sm text-slate-300">
               Conectado como: <strong className="text-white">{user.email}</strong>
+              <span className="text-xs text-emerald-400 font-medium mt-0.5">
+                Facturas creadas este mes: <strong>{monthlyCount}</strong>
+              </span>
             </span>
             <button
               onClick={handleLogout}
