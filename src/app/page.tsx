@@ -401,24 +401,81 @@ export default function Home() {
               className="w-full p-3 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 focus:outline-none focus:border-emerald-500 text-sm resize-none h-24 disabled:opacity-50"
             />
 
-            {/* BOTÓN O ALERTA DE UPGRADE SI ALCANZÓ EL LÍMITE */}
+            {/* ALERTA Y BOTONES DE CHECKOUT SI SE SUPERA EL LÍMITE FREEMIUM */}
             {userPlan === "gratis" && monthlyCount >= 5 ? (
-              <div className="bg-amber-500/10 border border-amber-500/30 p-4 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div className="text-sm text-amber-200">
-                  <strong className="block text-amber-400 font-bold">
+              <div className="bg-amber-500/10 border border-amber-500/30 p-5 rounded-xl flex flex-col gap-4 shadow-sm">
+                <div>
+                  <strong className="block text-amber-400 font-bold text-base">
                     Llegaste al límite gratis de este mes (5/5)
                   </strong>
-                  Actualizá a Pro para facturación e historial ilimitados.
+                  <p className="text-xs text-amber-200 mt-1">
+                    Elegí tu método de pago para pasar a Plan Pro con
+                    facturación e historial ilimitados:
+                  </p>
                 </div>
 
-                <a
-                  href="https://buy.stripe.com/tu_link_de_checkout" // Enlace directo a tu pasarela de pago (Stripe/MP)
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full sm:w-auto px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg text-center transition shadow-md whitespace-nowrap"
-                >
-                  Pasar a Pro ($9/mes)
-                </a>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  {/* Botón Mercado Pago */}
+                  <button
+                    onClick={async () => {
+                      if (!user) return;
+                      const { data, error } = await supabase.functions.invoke(
+                        "create-mp-checkout",
+                        {
+                          body: { userId: user.id, email: user.email },
+                        },
+                      );
+
+                      if (error) {
+                        let detailMsg = error.message;
+                        try {
+                          if (
+                            error.context &&
+                            typeof error.context.json === "function"
+                          ) {
+                            const body = await error.context.json();
+                            detailMsg = body.error || detailMsg;
+                          }
+                        } catch (e) {
+                          // fallback
+                        }
+                        alert(`Error en Mercado Pago: ${detailMsg}`);
+                        return;
+                      }
+
+                      if (data?.url) {
+                        window.location.href = data.url;
+                      }
+                    }}
+                    className="flex-1 py-2.5 px-4 bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs rounded-lg transition text-center shadow"
+                  >
+                    🇦🇷 Mercado Pago (Pesos)
+                  </button>
+
+                  {/* Botón Stripe */}
+                  <button
+                    onClick={async () => {
+                      if (!user) return;
+                      const { data, error } = await supabase.functions.invoke(
+                        "create-stripe-checkout",
+                        {
+                          body: { userId: user.id, email: user.email },
+                        },
+                      );
+                      if (data?.url) {
+                        window.location.href = data.url;
+                      } else {
+                        alert(
+                          error?.message ||
+                            "Error al iniciar checkout con Stripe",
+                        );
+                      }
+                    }}
+                    className="flex-1 py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-lg transition text-center shadow"
+                  >
+                    💳 Tarjeta Internacional ($9 USD)
+                  </button>
+                </div>
               </div>
             ) : (
               <button
