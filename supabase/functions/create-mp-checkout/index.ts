@@ -21,8 +21,13 @@ serve(async (req) => {
       )
     }
 
-    const origin = req.headers.get('origin') || 'http://localhost:3000'
-    const payerEmail = email && !email.includes('admin') ? email : 'test_user_123456@testuser.com'
+    const rawOrigin = req.headers.get('origin') || 'http://localhost:3000'
+    const backUrl = rawOrigin.includes('localhost')
+      ? 'https://example.com'
+      : `${rawOrigin}/?payment=success`
+
+    // Se usa el email del usuario logueado en la app
+    const payerEmail = email || 'comprador_test@test.com'
 
     const response = await fetch('https://api.mercadopago.com/checkout/preferences', {
       method: 'POST',
@@ -33,10 +38,10 @@ serve(async (req) => {
       body: JSON.stringify({
         items: [
           {
-            id: 'plan-pro-mensual',
-            title: 'FacturaFácil AI - Plan Pro Mensual',
+            id: 'plan-pro-suscripcion',
+            title: 'FacturaFácil AI - Suscripción Plan Pro (Mensual)',
             quantity: 1,
-            unit_price: 9000,
+            unit_price: 12000,
             currency_id: 'ARS',
           },
         ],
@@ -45,13 +50,10 @@ serve(async (req) => {
         },
         external_reference: userId,
         back_urls: {
-          success: `${origin}/?payment=success`,
-          failure: `${origin}/?payment=failure`,
-          pending: `${origin}/?payment=pending`,
+          success: backUrl,
+          failure: `${rawOrigin}/?payment=failure`,
+          pending: `${rawOrigin}/?payment=pending`,
         },
-        // 'approved' requiere que back_urls.success sea HTTPS o accesible
-        // En localhost lo dejamos comentado o en 'approved' solo si usas dominio seguro
-        // auto_return: 'approved',
       }),
     })
 
@@ -60,7 +62,7 @@ serve(async (req) => {
     if (!response.ok) {
       console.error('Error desde Mercado Pago API:', data)
       return new Response(
-        JSON.stringify({ error: data.message || data.error || 'Error al generar preferencia en MP' }),
+        JSON.stringify({ error: data.message || data.error || 'Error al generar checkout en MP' }),
         { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }

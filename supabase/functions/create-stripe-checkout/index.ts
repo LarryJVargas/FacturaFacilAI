@@ -16,7 +16,7 @@ serve(async (req) => {
 
     if (!stripeSecretKey) {
       return new Response(
-        JSON.stringify({ error: 'Falta configurar STRIPE_SECRET_KEY' }),
+        JSON.stringify({ error: 'Falta configurar STRIPE_SECRET_KEY en Supabase secrets' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
@@ -24,21 +24,25 @@ serve(async (req) => {
     const origin = req.headers.get('origin') || 'http://localhost:3000'
 
     const params = new URLSearchParams()
-    params.append('mode', 'payment')
+    params.append('mode', 'subscription') // Modo Suscripción Recurrente
     params.append('payment_method_types[]', 'card')
     params.append('customer_email', email)
     params.append('client_reference_id', userId)
+    
+    // Configuración del ítem recurrente: USD 12/mes ($12.00 = 1200 centavos)
     params.append('line_items[0][price_data][currency]', 'usd')
     params.append('line_items[0][price_data][product_data][name]', 'FacturaFácil AI - Plan Pro Mensual')
-    params.append('line_items[0][price_data][unit_amount]', '900') // $9.00 USD (en centavos)
+    params.append('line_items[0][price_data][recurring][interval]', 'month')
+    params.append('line_items[0][price_data][unit_amount]', '1200')
     params.append('line_items[0][quantity]', '1')
+    
     params.append('success_url', `${origin}/?payment=success`)
     params.append('cancel_url', `${origin}/?payment=cancelled`)
 
     const response = await fetch('https://api.stripe.com/v1/checkout/sessions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${stripeSecretKey}`,
+        'Authorization': `Bearer ${stripeSecretKey.trim()}`,
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: params.toString(),
@@ -49,8 +53,8 @@ serve(async (req) => {
     if (!response.ok) {
       console.error('Error Stripe:', session)
       return new Response(
-        JSON.stringify({ error: session.error?.message || 'Error al crear sesión en Stripe' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: session.error?.message || 'Error al crear suscripción en Stripe' }),
+        { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 

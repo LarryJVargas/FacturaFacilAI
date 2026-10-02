@@ -473,7 +473,7 @@ export default function Home() {
                     }}
                     className="flex-1 py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-lg transition text-center shadow"
                   >
-                    💳 Tarjeta Internacional ($9 USD)
+                    💳 Tarjeta Internacional ($12 USD)
                   </button>
                 </div>
               </div>
