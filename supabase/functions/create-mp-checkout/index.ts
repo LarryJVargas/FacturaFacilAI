@@ -22,12 +22,16 @@ serve(async (req) => {
     }
 
     const rawOrigin = req.headers.get('origin') || 'http://localhost:3000'
-    const backUrl = rawOrigin.includes('localhost')
-      ? 'https://example.com'
+
+    // Si estás en localhost, se usa https://example.com para pasar la validación estricta de MP,
+    // o el origin real si estás desplegado o usando un túnel HTTPS (ej. ngrok)
+    const successUrl = rawOrigin.includes('localhost')
+      ? 'https://example.com/?payment=success'
       : `${rawOrigin}/?payment=success`
 
-    // Se usa el email del usuario logueado en la app
-    const payerEmail = email || 'comprador_test@test.com'
+    const failureUrl = rawOrigin.includes('localhost')
+      ? 'https://example.com/?payment=failure'
+      : `${rawOrigin}/?payment=failure`
 
     const response = await fetch('https://api.mercadopago.com/checkout/preferences', {
       method: 'POST',
@@ -46,21 +50,22 @@ serve(async (req) => {
           },
         ],
         payer: {
-          email: payerEmail,
+          email: email || 'comprador_test@test.com',
         },
         external_reference: userId,
         back_urls: {
-          success: backUrl,
-          failure: `${rawOrigin}/?payment=failure`,
-          pending: `${rawOrigin}/?payment=pending`,
+          success: successUrl,
+          failure: failureUrl,
+          pending: successUrl,
         },
+        auto_return: 'approved', // ACTIVADO NUEVAMENTE
       }),
     })
 
     const data = await response.json()
 
     if (!response.ok) {
-      console.error('Error desde Mercado Pago API:', data)
+      console.error('Error Mercado Pago:', data)
       return new Response(
         JSON.stringify({ error: data.message || data.error || 'Error al generar checkout en MP' }),
         { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
