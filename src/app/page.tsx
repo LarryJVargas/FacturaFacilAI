@@ -7,6 +7,7 @@ import PaymentVerification from '@/components/PaymentVerification'
 import PaymentBanner from '@/components/PaymentBanner'
 import InvoiceForm from '@/components/InvoiceForm'
 import InvoiceList from '@/components/InvoiceList'
+import { useRouter } from 'next/navigation'
 
 function MainContent() {
   const [userEmail, setUserEmail] = useState<string>('')
@@ -15,10 +16,14 @@ function MainContent() {
   const [isVerifying, setIsVerifying] = useState(false)
   const [loadingMP, setLoadingMP] = useState(false)
   const [loadingStripe, setLoadingStripe] = useState(false)
+  const router = useRouter()
 
   const loadUserData = async () => {
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+    if (!user) {
+      router.push('/login')
+      return
+    }
 
     setUserEmail(user.email || '')
 

@@ -1,5 +1,6 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 interface HeaderProps {
@@ -9,9 +10,10 @@ interface HeaderProps {
 }
 
 export default function Header({ email, facturasCount, plan }: HeaderProps) {
+  const router = useRouter()
   const handleLogout = async () => {
     await supabase.auth.signOut()
-    window.location.reload()
+    router.push('/login')
   }
 
   return (
