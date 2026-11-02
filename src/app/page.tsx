@@ -19,32 +19,38 @@ function MainContent() {
   const router = useRouter()
 
   const loadUserData = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
+    // 1. Obtener la sesión activa
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session?.user) {
       router.push('/login')
       return
     }
 
+    const user = session.user
     setUserEmail(user.email || '')
 
-    // 1. Cargar Perfil
-    const { data: profileData } = await supabase
+    // 2. Cargar perfil (sin single para evitar errores silenciosos de RLS)
+    const { data: profileList, error: profileError } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', user.id)
-      .maybeSingle()
 
-    setProfile(profileData)
+    if (profileError) {
+      console.error('Error al cargar perfil:', profileError)
+    } else if (profileList && profileList.length > 0) {
+      console.log('Perfil obtenido desde Supabase:', profileList[0])
+      setProfile(profileList[0])
+    }
 
-    // 2. Cargar todas las facturas del usuario ordenadas por fecha
-    const { data: facturasData, error } = await supabase
+    // 3. Cargar facturas
+    const { data: facturasData, error: facturasError } = await supabase
       .from('facturas')
       .select('*')
       .eq('usuario_id', user.id)
       .order('created_at', { ascending: false })
 
-    if (error) {
-      console.error('Error al cargar facturas:', error)
+    if (facturasError) {
+      console.error('Error al cargar facturas:', facturasError)
     } else if (facturasData) {
       setFacturas(facturasData)
     }
@@ -70,20 +76,27 @@ function MainContent() {
 
   const facturasCountMonth = facturasEsteMes.length
 
-  // La condición del límite evalúa solo las facturas del mes actual
+  // Si el plan es 'pago', isLimitReached devolverá false inmediatamente
   const isLimitReached = profile?.plan !== 'pago' && facturasCountMonth >= 5
 
   const handleCreateInvoice = async (prompt: string) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        router.push('/login')
+        return
+      }
 
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/parse-and-create-invoice`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt, userId: user.id }),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+            'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
+          },
+          body: JSON.stringify({ prompt, userId: session.user.id }),
         }
       )
 
@@ -139,7 +152,7 @@ function MainContent() {
     <main className="w-full max-w-5xl mx-auto p-4 sm:p-6 min-h-screen text-white">
       <Header
         email={userEmail || profile?.email}
-        facturasCount={facturasCountMonth} // Muestra sólo las del mes actual en el banner superior
+        facturasCount={facturasCountMonth}
         plan={profile?.plan}
       />
 
@@ -165,7 +178,6 @@ function MainContent() {
             />
           )}
 
-          {/* El listado abajo sigue mostrando el historial completo (14) */}
           <InvoiceList facturas={facturas} />
         </div>
       )}

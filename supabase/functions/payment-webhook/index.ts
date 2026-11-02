@@ -14,27 +14,34 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-
     if (!supabaseUrl || !supabaseServiceKey) {
-      throw new Error('Faltan variables de entorno de Supabase')
+      console.error('Faltan variables SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY')
+      return new Response(JSON.stringify({ error: 'Error de variables de entorno' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
     }
 
-    // Cliente con Service Role para bypass de RLS y actualizar el perfil del usuario
+    // Cliente Admin para saltarse el Row Level Security (RLS)
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey)
 
     const url = new URL(req.url)
-    const provider = url.searchParams.get('provider') // 'stripe' o 'mercadopago'
+    const provider = url.searchParams.get('provider')
+
+    // Leer el body UNA SOLA VEZ
+    const body = await req.json()
 
     // -------------------------------------------------------------
-    // 1. WEBHOOK DE STRIPE
+    // 1. STRIPE WEBHOOK
     // -------------------------------------------------------------
-    if (provider === 'stripe') {
-      const event = await req.json()
+    if (provider === 'stripe' || body.object === 'event' || body.type?.startsWith('checkout.')) {
+      const event = body
 
-      // Evento cuando una suscripción o pago de checkout se completa exitosamente
       if (event.type === 'checkout.session.completed') {
         const session = event.data.object
         const userId = session.client_reference_id
+
+        console.log(`Evento checkout.session.completed recibido. userId: ${userId}`)
 
         if (userId) {
           const { error } = await supabaseAdmin
@@ -44,30 +51,34 @@ serve(async (req) => {
 
           if (error) {
             console.error('Error al actualizar plan en Supabase (Stripe):', error)
-            return new Response(JSON.stringify({ error: error.message }), { status: 500 })
+            return new Response(JSON.stringify({ error: error.message }), {
+              status: 500,
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            })
           }
 
-          console.log(`Plan actualizado a 'pago' para el usuario Stripe: ${userId}`)
+          console.log(`Plan actualizado exitosamente a 'pago' para el usuario Stripe: ${userId}`)
+        } else {
+          console.warn('El evento checkout.session.completed no contenia client_reference_id')
         }
       }
 
-      return new Response(JSON.stringify({ received: true }), { status: 200 })
+      return new Response(JSON.stringify({ received: true }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
     }
 
     // -------------------------------------------------------------
-    // 2. WEBHOOK DE MERCADO PAGO
+    // 2. MERCADO PAGO WEBHOOK
     // -------------------------------------------------------------
     if (provider === 'mercadopago') {
-      const body = await req.json()
       const mpAccessToken = Deno.env.get('MP_ACCESS_TOKEN')
-
-      // MP envía notificaciones de tipo 'payment' o 'preapproval'
       const topic = body.type || body.topic
       const dataId = body.data?.id || body.id
 
       if ((topic === 'payment' || topic === 'preapproval') && dataId) {
-        // Consultar el estado directamente a la API de Mercado Pago
-        const endpoint = topic === 'payment' 
+        const endpoint = topic === 'payment'
           ? `https://api.mercadopago.com/v1/payments/${dataId}`
           : `https://api.mercadopago.com/preapproval/${dataId}`
 
@@ -80,7 +91,6 @@ serve(async (req) => {
           const status = paymentData.status
           const userId = paymentData.external_reference
 
-          // Si el pago o la suscripción fue aprobada/autorizada
           if ((status === 'approved' || status === 'authorized') && userId) {
             const { error } = await supabaseAdmin
               .from('profiles')
@@ -88,21 +98,33 @@ serve(async (req) => {
               .eq('id', userId)
 
             if (error) {
-              console.error('Error al actualizar plan en Supabase (Mercado Pago):', error)
-              return new Response(JSON.stringify({ error: error.message }), { status: 500 })
+              console.error('Error al actualizar plan en Supabase (MP):', error)
+              return new Response(JSON.stringify({ error: error.message }), {
+                status: 500,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              })
             }
 
-            console.log(`Plan actualizado a 'pago' para el usuario MP: ${userId}`)
+            console.log(`Plan actualizado exitosamente a 'pago' para el usuario MP: ${userId}`)
           }
         }
       }
 
-      return new Response(JSON.stringify({ received: true }), { status: 200 })
+      return new Response(JSON.stringify({ received: true }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
     }
 
-    return new Response(JSON.stringify({ error: 'Proveedor no soportado' }), { status: 400 })
+    return new Response(JSON.stringify({ error: 'Proveedor no soportado' }), {
+      status: 400,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
   } catch (err: any) {
-    console.error('Error en payment-webhook:', err)
-    return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: corsHeaders })
+    console.error('Error procesando payment-webhook:', err)
+    return new Response(JSON.stringify({ error: err.message }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
   }
 })
